@@ -287,7 +287,7 @@ public abstract class ProxyHandler extends ChannelDuplexHandler {
             connectTimeoutFuture.cancel(false);
         }
 
-        if (connectPromise.trySuccess(ctx.channel())) {
+        if (!connectPromise.isDone()) {
             boolean removedCodec = true;
 
             removedCodec &= safeRemoveEncoder();
@@ -303,11 +303,13 @@ public abstract class ProxyHandler extends ChannelDuplexHandler {
                 if (flushedPrematurely) {
                     ctx.flush();
                 }
+                connectPromise.trySuccess(ctx.channel());
             } else {
                 // We are at inconsistent state because we failed to remove all codec handlers.
                 Exception cause = new ProxyConnectException(
                         "failed to remove all codec handlers added by the proxy handler; bug?");
                 failPendingWrites(cause);
+                connectPromise.tryFailure(cause);
                 ctx.fireExceptionCaught(cause);
                 ctx.close();
             }
@@ -347,11 +349,12 @@ public abstract class ProxyHandler extends ChannelDuplexHandler {
                     exceptionMessage(cause.toString()), cause);
         }
 
-        if (connectPromise.tryFailure(cause)) {
+        if (!connectPromise.isDone()) {
             safeRemoveDecoder();
             safeRemoveEncoder();
 
             failPendingWrites(cause);
+            connectPromise.tryFailure(cause);
             ctx.fireExceptionCaught(cause);
             ctx.close();
         }
